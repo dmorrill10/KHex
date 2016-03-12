@@ -5,8 +5,10 @@ import time
 from gamestate import gamestate
 import sys
 
-def make_valid_move(game, agent, color):
+def make_valid_move(game, agent, color, timeout_flag):
 	move = agent.sendCommand("genmove "+color)
+	if(timeout_flag[0]):
+		return move
 	while(True):
 		if(game.cell_color(move_to_cell(move))==game.PLAYERS["none"]):
 			agent.sendCommand("valid")
@@ -14,6 +16,8 @@ def make_valid_move(game, agent, color):
 			break
 		else:
 			move = agent.sendCommand("occupied")
+			if(timeout_flag[0]):
+				break
 	return move
 
 class moveThread(threading.Thread):
@@ -23,30 +27,39 @@ class moveThread(threading.Thread):
 		self.agent = agent
 		self.color = color
 		self.move = "x"
+		self.timeout_flag = [False]
 	def run(self):
-		self.move = make_valid_move(self.game, self.agent, self.color).strip()
+		self.move = make_valid_move(self.game, self.agent, self.color, self.timeout_flag).strip()
 
 class agent:
 	def __init__(self, program):
 		self.name = program.sendCommand("name").strip()
 		self.program = program
+		self.lock  = threading.Lock()
+
 	def sendCommand(self, command):
-		return self.program.sendCommand(command)
+		self.lock.acquire()
+		answer = self.program.sendCommand(command)
+		self.lock.release()
+		return answer
 
 class web_agent:
 	"""
-	Provide an interface to a socket connected to a Khex agent 
+	Provide an interface to a socket connected to a Khex agent
 	which looks like an ordinary Khex agent.
 	"""
 	def __init__(self, client):
 		self.client = client
 		self.name = self.sendCommand("name").strip()
+		self.lock = threading.Lock()
 
 	def sendCommand(self, command):
+		self.lock.acquire()
 		totalsent = 0
 		while totalsent < len(command):
 			sent = self.client.send(bytes(command[totalsent:],'UTF-8'))
 			if sent == 0:
+				self.lock.release()
 				raise RuntimeError("client disconnected")
 			totalsent += sent
 		command = ''
@@ -54,10 +67,12 @@ class web_agent:
 		while True:
 		    chunk=self.client.recv(2048)
 		    if chunk == b'':
-		        raise RuntimeError("client disconnected")
+		    	self.lock.release()
+		    	raise RuntimeError("client disconnected")
 		    command+=chunk.decode('UTF-8')
 		    if(chunk[-1]!='\n'):
 		    	break
+		self.lock.release()
 		return command
 
 
@@ -73,7 +88,7 @@ def make_names_unique(clients):
 				client_2.name = client_2.name+"I"
 
 
-def run_game(blackAgent, whiteAgent, boardsize, time):
+def run_game(blackAgent, whiteAgent, boardsize, time, verbose = False):
 	game = gamestate(boardsize)
 	winner = None
 	timeout = False
@@ -85,9 +100,12 @@ def run_game(blackAgent, whiteAgent, boardsize, time):
 		t.start()
 		t.join(time+0.5)
 		moves.append(t.move)
+		if verbose:
+			print(game)
 		#if black times out white wins
 		if(t.isAlive()):
 			timeout = True
+			t.timeout_flag[0] = True
 			winner = game.PLAYERS["white"]
 			break
 		if(game.winner() != game.PLAYERS["none"]):
@@ -98,17 +116,21 @@ def run_game(blackAgent, whiteAgent, boardsize, time):
 		t.start()
 		t.join(time+0.5)
 		moves.append(t.move)
+		if verbose:
+			print(game)
 		#if white times out black wins
 		if(t.isAlive()):
 			timeout = True
+			t.timeout_flag[0] = True
 			winner = game.PLAYERS["black"]
 			break
 		if(game.winner() != game.PLAYERS["none"]):
 			winner = game.winner()
 			break
 		sys.stdout.flush()
-	winner_name = blackAgent.name if winner == game.PLAYERS["white"] else whiteAgent.name
-	print("Game over, " + winner_name+ " ("+game.PLAYER_STR[winner]+") " + "wins" + (" by timeout." if timeout else "."))
+	winner_name = blackAgent.name if winner == game.PLAYERS["black"] else whiteAgent.name
+	loser_name =  whiteAgent.name if winner == game.PLAYERS["black"] else blackAgent.name
+	print("Game over, " + winner_name+ " ("+game.PLAYER_STR[winner]+") " + "wins against "+loser_name+(" by timeout." if timeout else "."))
 	print(game)
 	print(" ".join(moves))
 	return winner
@@ -134,7 +156,7 @@ class win_stats:
 			print(agent1+" "*(entry_size-len(agent1)), end="")
 			for agent2 in agents:
 				if(agent1!=agent2):
-					win_lose = self.stats[agent2][agent1]
+					win_lose = self.stats[agent1][agent2]
 					entry = str(win_lose[0])+", "+str(win_lose[1])
 				else:
 					entry = 'x'*(entry_size-2)+'  '
@@ -152,8 +174,8 @@ class win_stats:
 			print(agent1+" "*(entry_size-len(agent1)), end="")
 			for agent2 in agents:
 				if(agent1!=agent2):
-					win_lose1 = self.stats[agent2][agent1]
-					win_lose2 = self.stats[agent1][agent2]
+					win_lose1 = self.stats[agent1][agent2]
+					win_lose2 = self.stats[agent2][agent1]
 					wins = win_lose1[0]+win_lose2[1]
 					loses = win_lose1[1]+win_lose2[0]
 					entry = str(wins/float(wins+loses)*100)[0:5]+"%"
