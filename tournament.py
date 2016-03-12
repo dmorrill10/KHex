@@ -35,7 +35,7 @@ class agent:
 
 class web_agent:
 	"""
-	Provide an interface to a socket connected to a Khex agent
+	Provide an interface to a socket connected to a Khex agent 
 	which looks like an ordinary Khex agent.
 	"""
 	def __init__(self, client):
@@ -107,7 +107,7 @@ def run_game(blackAgent, whiteAgent, boardsize, time):
 			winner = game.winner()
 			break
 		sys.stdout.flush()
-	winner_name = blackAgent.name if winner == game.PLAYERS["black"] else whiteAgent.name
+	winner_name = blackAgent.name if winner == game.PLAYERS["white"] else whiteAgent.name
 	print("Game over, " + winner_name+ " ("+game.PLAYER_STR[winner]+") " + "wins" + (" by timeout." if timeout else "."))
 	print(game)
 	print(" ".join(moves))
@@ -134,7 +134,7 @@ class win_stats:
 			print(agent1+" "*(entry_size-len(agent1)), end="")
 			for agent2 in agents:
 				if(agent1!=agent2):
-					win_lose = self.stats[agent1][agent2]
+					win_lose = self.stats[agent2][agent1]
 					entry = str(win_lose[0])+", "+str(win_lose[1])
 				else:
 					entry = 'x'*(entry_size-2)+'  '
@@ -152,9 +152,11 @@ class win_stats:
 			print(agent1+" "*(entry_size-len(agent1)), end="")
 			for agent2 in agents:
 				if(agent1!=agent2):
-					wins_for_black = self.stats[agent1][agent2][0]
-					num_matches_as_black = float(sum(self.stats[agent1][agent2]))
-					entry = str(wins_for_black / num_matches_as_black * 100)[0:5]+"%"
+					win_lose1 = self.stats[agent2][agent1]
+					win_lose2 = self.stats[agent1][agent2]
+					wins = win_lose1[0]+win_lose2[1]
+					loses = win_lose1[1]+win_lose2[0]
+					entry = str(wins/float(wins+loses)*100)[0:5]+"%"
 				else:
 					entry = 'x'*(entry_size-2)+'  '
 				print(entry+" "*(entry_size-len(entry)),end="")
